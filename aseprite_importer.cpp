@@ -40,7 +40,8 @@
  * void *FileData = MyLoadFileFunction("example.ase");		//you must implement your own file read function
  * aseprite_file ParsedFile = AsepriteParseFile(FileData);	//parse the file
  * free(FileData);											//ok to free the file data here
- * void *FrameData = AsepriteGetEntireFrameRGBA(&ParsedFile, 0); //get decompressed frame data
+ * void *FrameData = malloc(ParsedFile.Header.WidthInPixels*4*ParsedFile.Header.HeightInPixels);
+ * AsepriteGetEntireFrameRGBA(&ParsedFile, 0, FrameData, ParsedFile.Header.WidthInPixels, ParsedFile.Header.HeightInPixels, 0, 0);
  * glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ParsedFile.Header.WidthInPixels, ParsedFile.Header.HeightInPixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, (const GLvoid *)FrameData);
  * free(FrameData);
  * ...
@@ -271,21 +272,21 @@ enum aseprite_layer_flags
 enum aseprite_blend_mode
 { 
 	AsepriteBlendMode_Normal = 0,
-    AsepriteBlendMode_Multiply = 1,
-    AsepriteBlendMode_Screen   = 2,
-    AsepriteBlendMode_Overlay  = 3,
-    AsepriteBlendMode_Darken   = 4,
-    AsepriteBlendMode_Lighten  = 5,
-    AsepriteBlendMode_ColorDodge = 6,
-    AsepriteBlendMode_ColorBurn  = 7,
-    AsepriteBlendMode_HardLight  = 8,
-    AsepriteBlendMode_SoftLight  = 9,
-    AsepriteBlendMode_Difference  = 10,
-    AsepriteBlendMode_Exclusion   = 11,
-    AsepriteBlendMode_Hue         = 12,
-    AsepriteBlendMode_Saturation  = 13,
-    AsepriteBlendMode_Color       = 14,
-    AsepriteBlendMode_Luminosity  = 15,
+	AsepriteBlendMode_Multiply = 1,
+	AsepriteBlendMode_Screen   = 2,
+	AsepriteBlendMode_Overlay  = 3,
+	AsepriteBlendMode_Darken   = 4,
+	AsepriteBlendMode_Lighten  = 5,
+	AsepriteBlendMode_ColorDodge = 6,
+	AsepriteBlendMode_ColorBurn  = 7,
+	AsepriteBlendMode_HardLight  = 8,
+	AsepriteBlendMode_SoftLight  = 9,
+	AsepriteBlendMode_Difference  = 10,
+	AsepriteBlendMode_Exclusion   = 11,
+	AsepriteBlendMode_Hue         = 12,
+	AsepriteBlendMode_Saturation  = 13,
+	AsepriteBlendMode_Color       = 14,
+	AsepriteBlendMode_Luminosity  = 15,
 };
 
 enum aseprite_cel_type
