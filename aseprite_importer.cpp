@@ -306,6 +306,7 @@ struct aseprite_parser
 {
 	void *At;
 	int AvailableLayers;
+	bool UsesNewPalette;
 };
 
 aseprite_string
@@ -343,6 +344,36 @@ AsepriteParsePalette(aseprite_file *File, void *ChunkData)
 
 		aseprite_color *Color = &File->Palette.Colors[EntryIndex];
 		*Color = AsepriteColorFromR8G8B8A8(PaletteEntry->Red, PaletteEntry->Green, PaletteEntry->Blue, PaletteEntry->Alpha);
+	}
+}
+
+void
+AsepriteParseOldPalette(aseprite_file *File, void *ChunkData)
+{
+	uint16_t Packets = *((uint16_t *)ChunkData);
+	ChunkData = ((uint16_t *)ChunkData + 1);
+	File->Palette.Colors = (aseprite_color *)malloc(sizeof(aseprite_color)*256);
+
+	for (int PacketIndex = 0; PacketIndex < Packets; PacketIndex++)
+	{
+		uint8_t StartIndex = *((uint8_t *)ChunkData);
+		ChunkData = ((uint8_t *)ChunkData + 1);
+		uint8_t NumColors = *((uint8_t *)ChunkData);
+		ChunkData = ((uint8_t *)ChunkData + 1);
+		uint16_t NumColors16 = NumColors;
+		if (NumColors == 0)
+			NumColors16 = 256;
+		for (int ColorIndex = StartIndex; ColorIndex < StartIndex + NumColors16; ColorIndex++)
+		{
+			uint8_t Red = *((uint8_t *)ChunkData);
+			ChunkData = ((uint8_t *)ChunkData + 1);
+			uint8_t Green = *((uint8_t *)ChunkData);
+			ChunkData = ((uint8_t *)ChunkData + 1);
+			uint8_t Blue = *((uint8_t *)ChunkData);
+			ChunkData = ((uint8_t *)ChunkData + 1);
+			aseprite_color *Color = &File->Palette.Colors[ColorIndex];
+			*Color = AsepriteColorFromR8G8B8A8(Red, Green, Blue, 255);
+		}
 	}
 }
 
@@ -492,6 +523,8 @@ AsepriteParseChunk(aseprite_file *File, aseprite_frame *Frame, aseprite_parser *
 		case AsepriteChunk_OldPalette:
 		{
 			printf_d("old palette\n");
+			if (!Parser->UsesNewPalette)
+				AsepriteParseOldPalette(File, ChunkData);
 		} break;
 		case AsepriteChunk_OldPalette2:
 		{
@@ -527,6 +560,7 @@ AsepriteParseChunk(aseprite_file *File, aseprite_frame *Frame, aseprite_parser *
 		case AsepriteChunk_Palette:
 		{
 			printf_d("palette\n");
+			Parser->UsesNewPalette = true;
 			AsepriteParsePalette(File, ChunkData);
 		} break;
 		case AsepriteChunk_UserData:
@@ -562,7 +596,7 @@ AsepriteParseFile(void *FileData)
 {
 	aseprite_file Result;
 
-	aseprite_parser Parser;
+	aseprite_parser Parser = {0};
 	Parser.At = FileData;
 	Parser.AvailableLayers = 2;
 
@@ -705,16 +739,16 @@ AsepriteCombineColors(aseprite_color *Src, aseprite_color *Dest, aseprite_blend_
 	return Result;
 }
 
-void *
-AsepriteGetEntireFrameRGBA(aseprite_file *File, int FrameNumber)
+void
+AsepriteGetEntireFrameRGBA(aseprite_file *File, int FrameNumber, void *DestTexture, int DestWidth, int DestHeight, int DestX, int DestY)
 {
 	Assert(FrameNumber < File->NumFrames);
 	
 	int Width = File->Header.WidthInPixels;
 	int Height = File->Header.HeightInPixels;
-	void *Result = malloc(Width*4*Height);
 	aseprite_frame *Frame = File->Frames + FrameNumber;
 	aseprite_palette *Palette = &File->Palette;
+	uint8_t TransparentPaletteEntry = File->Header.TransparentPaletteEntry;
 
 	for (int LayerIndex = 0; LayerIndex < File->NumLayers; LayerIndex++)
 	{
@@ -728,7 +762,9 @@ AsepriteGetEntireFrameRGBA(aseprite_file *File, int FrameNumber)
 		uint16_t ColorDepth = File->Header.ColorDepth;
 		float LayerOpacity = LayerInfo->Header.Opacity / 255.0f;
 
-		uint32_t *Dest = (uint32_t *)Result;
+		int DestPitch = DestWidth*4;
+		int DestStartX = (DestX < 0) ? 0 : (DestX*4);
+
 		int DataPitch = Layer->DataWidth;
 		if (ColorDepth == 32)
 			DataPitch *= 4;
@@ -740,15 +776,30 @@ AsepriteGetEntireFrameRGBA(aseprite_file *File, int FrameNumber)
 
 		for (int Y = 0; Y < Height; Y++)
 		{
+			if (Y + DestY < 0)
+				continue;
+			if (Y + DestY >= DestHeight)
+				break;
+
+			uint32_t *Dest = (uint32_t *)((uint8_t *)DestTexture + (DestY + Y)*DestPitch + DestStartX);
 			uint8_t *Source = ((uint8_t *)CelData + (StartY + Y)*DataPitch + StartX);
 			for (int X = 0; X < Width; X++)
 			{
+				if (X + DestX < 0)
+					continue;
+				if (X + DestX >= DestWidth)
+					break;
+
 				aseprite_color SourceColor;
 				switch (ColorDepth)
 				{
 					case 8:
 					{
-						SourceColor = Palette->Colors[(*Source++)];
+						uint8_t PaletteIndex = (*Source++);
+						if (PaletteIndex == TransparentPaletteEntry)
+							SourceColor = (aseprite_color){0};
+						else
+							SourceColor = Palette->Colors[PaletteIndex];
 					} break;
 					case 32:
 					{
@@ -778,6 +829,4 @@ AsepriteGetEntireFrameRGBA(aseprite_file *File, int FrameNumber)
 			}
 		}
 	}
-
-	return Result;
 }
